@@ -46,12 +46,24 @@ def get_songs():
         if len(line) < 3 or (line.isdigit() and len(line) <= 3):
             i += 1
             continue
-        # Extraire le titre : c'est la ligne courante (en enlevant le numéro au début si présent)
+        # Le numéro est généralement sur la ligne précédente (ou avant une ligne vide)
+        # Vérifier i-1 et i-2 (si i-1 est vide)
+        num_str = ""
+        if i > 0:
+            prev_line_1 = lines[i-1].strip() if i-1 >= 0 else ""
+            if prev_line_1.isdigit() and int(prev_line_1) > 0:
+                num_str = prev_line_1
+            else:
+                # Vérifier i-2 au cas où il y a une ligne vide entre le numéro et le titre
+                if i > 1:
+                    prev_line_2 = lines[i-2].strip() if i-2 >= 0 else ""
+                    if prev_line_2.isdigit() and int(prev_line_2) > 0:
+                        num_str = prev_line_2
+        # Nettoyer le titre (enlever le numéro au début si présent par erreur)
         title = line
         import re as re_mod
         m_num = re_mod.search(r"^\d+\s+", title)
-        num_str = ""
-        if m_num:
+        if m_num and not num_str:
             num_str = title[:m_num.end()-1].strip()
             title = title[m_num.end():]
         # Si le titre est vide après nettoyage, passer
@@ -93,10 +105,21 @@ def download(num_str, title, artist, idx, total):
         print(f"[{idx}/{total}] SKIP (doublon évité) : {title} -> {fname}")
         return True
     query = f"{title} {artist}".replace('"', '').replace("'", '')
-    # Nom personnalisé : numéro - titre - artiste.mp3
-    safe_title = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "_")
-    safe_artist = re.sub(r"[^\w\s-]", "", artist).strip().replace(" ", "_") if artist else "Unknown"
-    num_part = f"{num_str:03d}" if num_str and num_str.isdigit() else "000"
+    # Nom personnalisé : numéro - titre - artiste.mp3 (caractères lisibles, pas d'underscore)
+    # Nettoyer uniquement les caractères interdits dans un nom de fichier (\, /, :, *, ?, ", <, >, |)
+    def clean_for_filename(text):
+        import re
+        # Remplacer uniquement les caractères interdits dans les noms de fichiers Windows/macOS
+        clean = re.sub(r'[\\/:*?"<>|]', "_", text)
+        # Remplacer plusieurs underscores consécutifs par un seul
+        clean = re.sub(r"_+", "_", clean)
+        # Supprimer les underscores au début et à la fin
+        clean = clean.strip("_")
+        return clean
+    safe_title = clean_for_filename(title)
+    safe_artist = clean_for_filename(artist) if artist else "Unknown"
+    num_part = f"{int(num_str):03d}" if num_str and num_str.isdigit() else "000"
+    # Format personnalisé : {num:03d} - {titre lisible} - {artiste lisible}
     custom_name = f"{num_part} - {safe_title} - {safe_artist}"
     out_template = os.path.join(OUTDIR, f"{custom_name}.%(ext)s")
     cmd = [
